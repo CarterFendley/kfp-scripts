@@ -19,20 +19,19 @@ def parse_datetime(dt_str: str) -> datetime:
 class Node:
     name: str
     display_name: str
-    stated_at: datetime
+    started_at: datetime
     finished_at: datetime
     duration: timedelta = None
 
     def __post_init__(self):
-        self.duration = self.finished_at - self.stated_at
+        self.duration = self.finished_at - self.started_at
 
     def display(self):
         print(self.display_name)
         print("=======================")
-        print("Started at:", self.stated_at)
+        print("Started at:", self.started_at)
         print("Finished at:", self.finished_at)
         print("Duration:", self.duration)
-
 class RuntimeAccessor:
     @classmethod
     def from_run_detail(cls, run_detail: ApiRunDetail):
@@ -45,6 +44,11 @@ class RuntimeAccessor:
 
     def __init__(self, workflow_manifest: dict):
         self.workflow_manifest = workflow_manifest
+
+        # Calculate pipeline duration
+        self.started_at = parse_datetime(workflow_manifest['status']['startedAt'])
+        self.finished_at = parse_datetime(workflow_manifest['status']['finishedAt'])
+        self.duration = self.finished_at - self.started_at
 
         # Key templates by name
         self.templates = {}
@@ -66,7 +70,7 @@ class RuntimeAccessor:
             self.nodes[name] = Node(
                 name=name,
                 display_name=display_name,
-                stated_at=parse_datetime(node['startedAt']),
+                started_at=parse_datetime(node['startedAt']),
                 finished_at=parse_datetime(node['finishedAt']),
             )
 
@@ -81,6 +85,14 @@ class RuntimeAccessor:
         for node in self.nodes.values():
             node.display()
             print()
+
+        print("--------------------------------")
+        print("Over all pipeline")
+        print("--------------------------------")
+        print("Started at:", self.started_at)
+        print("Finished at:", self.finished_at)
+        print("Duration:", self.duration)
+
 
 def run():
     client = Client()
@@ -102,12 +114,15 @@ def run():
 
     print()
     runtimes = RuntimeAccessor.from_run_detail(run_detail)
+    print("Pipeline")
+    print("\tduration:", runtimes.duration)
+
     s1 = runtimes.get_by_name("Sequential 1")[0]
-    print("Sequential 1:")
+    print("Component 1:")
     print("\tduration:", s1.duration)
 
     s1 = runtimes.get_by_name("Sequential 2")[0]
-    print("Sequential 2:")
+    print("Component 2:")
     print("\tduration:", s1.duration)
 
 
