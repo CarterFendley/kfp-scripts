@@ -7,3 +7,7 @@ def timed_sleep(seconds: int, additional: int = 0):
     import time
 
     time.sleep(seconds+additional)
+
+
+def runtime_exception():
+    raise RuntimeError("My runtime error")

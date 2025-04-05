@@ -16,10 +16,10 @@ def print_run_info(run: ApiRun):
     print("- Scheduled at:", run.scheduled_at) # TODO: Why is this 1970
     print("- Finished at:", run.finished_at)
 
-def dump_manifests(run_detail: ApiRunDetail):
+def dump_manifests(name: str, run_detail: ApiRunDetail):
     pipeline_runtime: ApiPipelineRuntime = run_detail.pipeline_runtime
     print(">>> Writing pipeline runtime to pipeline_runtime.workflow_manifest.json")
-    with open("pipeline_runtime.workflow_manifest.json", "w") as f:
+    with open(f"{name}.pipeline_runtime.workflow_manifest.json", "w") as f:
         import json
         json.dump(
             json.loads(pipeline_runtime.workflow_manifest),
@@ -30,7 +30,7 @@ def dump_manifests(run_detail: ApiRunDetail):
     run: ApiRun = run_detail.run
     pipline_spec: ApiPipelineSpec = run.pipeline_spec
     print(">>> Writing pipeline spec to pipeline_spec.workflow_manifest.json")
-    with open("pipeline_spec.workflow_manifest.json", "w") as f:
+    with open(f"{name}.pipeline_spec.workflow_manifest.json", "w") as f:
         import json
         json.dump(
             json.loads(pipline_spec.workflow_manifest),

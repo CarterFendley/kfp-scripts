@@ -1,3 +1,10 @@
+##################################
+# DEPRECATED
+#
+# Use run_data.py instead.
+#
+# DEPRECATED
+##################################
 import json
 from datetime import datetime, timedelta
 from dataclasses import dataclass
@@ -10,7 +17,6 @@ from kfp_server_api.models import ApiPipelineRuntime
 
 from samples.pipelines import simple_timed
 from utils.dump import dump_manifests, print_run_info, dump_graphviz
-from utils.manifest import KFPRun
 
 def parse_datetime(dt_str: str) -> datetime:
     return datetime.strptime(dt_str, "%Y-%m-%dT%H:%M:%SZ")
