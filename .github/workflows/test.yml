@@ -9,6 +9,7 @@ jobs:
     strategy:
       matrix:
         kfp-version: ['1.9', '1.9' , '1.7']
+    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
 
