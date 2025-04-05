@@ -8,7 +8,7 @@ jobs:
   test:
     strategy:
       matrix:
-        kfp_version: ['1.9', '1.8' , '1.7']
+        kfp_version: ['1.8.22' , '1.7.1']  # TODO: Where is 1.9.x?
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
