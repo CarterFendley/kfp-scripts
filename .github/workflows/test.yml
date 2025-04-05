@@ -1,0 +1,25 @@
+name: Run Tests
+
+on:
+  push:
+    branches: ["*"]
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        kfp-version: ['1.9', '1.9' , '1.7']
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Create KFP cluster
+      uses: ./.github/actions/kfp-cluster
+      with:
+        k8s_version: v1.29.2
+        kfp-version: ${{ matrix.k8s_version }}
+    - name: Install dependencies
+      run: |
+        python -m pip install -r requirements.txt
+    - name: Run Tests
+      run: |
+        python utils/run_data.py

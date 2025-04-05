@@ -1,0 +1,33 @@
+name: "Set up KFP on KinD"
+description: "Step to start and configure KFP on KinD"
+
+inputs:
+  k8s_version:
+    description: "The Kubernetes version to use for the Kind cluster"
+    required: true
+  kfp_version:
+    description: 'Version of kubeflow to install'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Create k8s Kind Cluster
+      uses: container-tools/kind-action@v2
+      with:
+        cluster_name: kfp
+        kubectl_version: ${{ inputs.k8s_version }}
+        version: v0.25.0
+        node_image: kindest/node:${{ inputs.k8s_version }}
+    - name: Install kfp
+      shell: bash
+      run: |
+        export PIPELINE_VERSION=${{ inputs.kfp_version }}
+        kubectl apply -k "github.com/kubeflow/pipelines/manifests/kustomize/cluster-scoped-resources?ref=$PIPELINE_VERSION"
+        kubectl wait --for condition=established --timeout=60s crd/applications.app.k8s.io
+        kubectl apply -k "github.com/kubeflow/pipelines/manifests/kustomize/env/dev?ref=$PIPELINE_VERSION"
+    - name: Wait for pods
+      shell: bash
+      run: |
+        pip install -r ./github/resources/requirements.txt
+        python ./github/resources/wait_for_pods

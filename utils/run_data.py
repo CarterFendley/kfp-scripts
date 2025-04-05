@@ -179,6 +179,7 @@ class RunData:
         return f"DAG(name={self.run_name}, status={self.status}, duration={self.duration})"
 
     def display(self):
+        print(self)
         for node in self.nodes.values():
             print(f"  {node}")
 
