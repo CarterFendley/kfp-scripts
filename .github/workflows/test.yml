@@ -20,7 +20,7 @@ jobs:
     - name: Create KFP cluster
       uses: ./.github/actions/kfp-argo-cluster
       with:
-        k8s_version: v1.29.2
+        k8s_version: v1.23.0
         kfp_version: ${{ matrix.kfp_version }}
     - name: Install dependencies
       run: |
