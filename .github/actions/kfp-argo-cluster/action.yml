@@ -29,5 +29,5 @@ runs:
     - name: Wait for pods
       shell: bash
       run: |
-        pip install -r ./github/resources/requirements.txt
-        python ./github/resources/wait_for_pods
+        pip install -r ./.github/resources/requirements.txt
+        python ./.github/resources/wait_for_pods
