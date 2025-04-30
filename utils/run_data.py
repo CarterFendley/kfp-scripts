@@ -1,6 +1,6 @@
 import json
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
 # TODO: This should honestly be annotated in the KFP client
 from kfp_server_api.models import ApiRunDetail
@@ -174,6 +174,11 @@ class RunData:
             return finished_at - started_at
 
         return utc_now() - started_at
+
+    def get_nodes(self, display_name: str) -> List[NodeData]:
+        return list(
+            filter(lambda n: n.display_name == display_name, self.nodes.values())
+        )
 
     def __str__(self) -> str:
         return f"DAG(name={self.run_name}, status={self.status}, duration={self.duration})"
