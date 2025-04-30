@@ -1,7 +1,14 @@
+from __future__ import annotations
+
 import json
+import tarfile
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, List
+from io import BytesIO
+from base64 import b64decode
 
+
+from kfp import Client
 # TODO: This should honestly be annotated in the KFP client
 from kfp_server_api.models import ApiRunDetail
 from kfp_server_api.models import ApiPipelineRuntime
@@ -33,9 +40,21 @@ class StatusMixin:
         return self.status == 'Failed'
 
 class NodeData(StatusMixin):
-    def __init__(self, display_name: str, node: dict):
+    def __init__(
+        self,
+        display_name: str,
+        node: dict,
+        run: RunData
+    ):
         self.display_name = display_name
         self.node = node
+        self.run = run
+
+        self.client = self.run.client
+
+    @property
+    def node_id(self) -> str:
+        return self.node['id']
 
     @property
     def started_at(self) -> Optional[datetime]:
@@ -83,21 +102,73 @@ class NodeData(StatusMixin):
 
         return utc_now() - started_at
 
+    def pull_logs(self) -> str:
+        return self._pull_artifact('main-logs', is_tarfile=False)
+
+    def _pull_artifact(self, artifact_name: str, is_tarfile: bool = True):
+        valid_names = [a['name'] for a in self.node['outputs']['artifacts']]
+        assert artifact_name in valid_names, "Artifact '%s' not found in artifact names for component: %s" % (artifact_name, valid_names)
+
+        assert self.client is not None, "Pulling artifacts requires access to a KFP client, please provide one while constructing associated 'RunData' object."
+
+        # Reference https://github.com/kubeflow/pipelines/issues/4327#issuecomment-687255001
+        artifact = self.client.runs.read_artifact(
+            self.run.run_id,
+            self.node_id,
+            artifact_name
+        )
+
+        data = b64decode(artifact.data)
+
+        if not is_tarfile:
+            return data.decode()
+
+        # NOTE: Honestly not sure which stuff is a tarfile, know I had some instances previously.
+        buffer = BytesIO()
+        buffer.write(data)
+        buffer.seek(0)
+        with tarfile.open(fileobj=buffer) as tar:
+            member_names = tar.getnames()
+            data = {}
+            for name in member_names:
+                data[name] = tar.extractfile(name).read().decode('utf-8')
+
+        return data
+
     def __str__(self) -> str:
         return f"Node(name={self.display_name}, status={self.status}, duration={self.duration})"
 
 class RunData:
     @classmethod
-    def from_run_detail(cls, run_detail: ApiRunDetail):
-        return cls.from_pipeline_runtime(run_detail.pipeline_runtime)
+    def from_run_detail(
+        cls,
+        run_detail: ApiRunDetail,
+        client: Optional[Client] = None
+    ):
+        return cls.from_pipeline_runtime(
+            pipeline_runtime=run_detail.pipeline_runtime,
+            client=client
+        )
 
     @classmethod
-    def from_pipeline_runtime(cls, pipeline_runtime: ApiPipelineRuntime):
+    def from_pipeline_runtime(
+        cls,
+        pipeline_runtime: ApiPipelineRuntime,
+        client: Optional[Client] = None
+    ):
         workflow_manifest = json.loads(pipeline_runtime.workflow_manifest)
-        return cls(workflow_manifest)
+        return cls(
+            workflow_manifest=workflow_manifest,
+            client=client
+        )
 
-    def __init__(self, workflow_manifest: dict):
+    def __init__(
+        self,
+        workflow_manifest: dict,
+        client: Optional[Client] = None
+    ):
         self.workflow_manifest = workflow_manifest
+        self.client = client
 
         self._parse_nodes()
 
@@ -126,12 +197,17 @@ class RunData:
             # NOTE: Important that we are using the Argo node name, not Kubeflow display name which may not be unique
             self.nodes[name] = NodeData(
                 display_name=display_name,
-                node=node
+                node=node,
+                run=self
             )
 
     @property
     def run_name(self) -> str:
         return self.workflow_manifest['metadata']['annotations']['pipelines.kubeflow.org/run_name']
+
+    @property
+    def run_id(self) -> str:
+        return self.workflow_manifest['metadata']['labels']['pipeline/runid']
 
     @property
     def started_at(self) -> Optional[datetime]:
@@ -216,7 +292,7 @@ if __name__ == '__main__':
         run_detail: ApiRunDetail = client.get_run(result.run_id)
         # dump_manifests('run_data', run_detail)
 
-        data = RunData.from_run_detail(run_detail)
+        data = RunData.from_run_detail(run_detail, client=client)
 
         data.display()
         print('\n')
@@ -225,3 +301,6 @@ if __name__ == '__main__':
             break
 
         time.sleep(0.1)
+
+    node = data.get_nodes('runtime-exception')[0]
+    print(node.pull_logs())
