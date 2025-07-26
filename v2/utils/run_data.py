@@ -1,7 +1,15 @@
+from __future__ import annotations
+
+import json
+import subprocess
 import time
 from datetime import datetime
 from typing import List
 from kfp_server_api import V2beta1Run
+
+def parse_datetime(dt_str: str) -> datetime:
+    assert dt_str.endswith("Z"), "Does not appear to be Zulu (UTC) timestamp"
+    return datetime.fromisoformat(dt_str[:-1] + "+00:00")
 
 class StateMixin:
     @property
@@ -80,6 +88,17 @@ class RunData(StateMixin):
         return list(filter(lambda n: n.display_name == display_name, self.nodes))
 
     @property
+    def argo_name(self) -> str:
+        nodes = self.get_nodes("root")
+        if len(nodes) != 1:
+            raise RuntimeError("Failed to get a single root node instead got: %s" % len(nodes))
+
+        root_note = nodes[0]
+        # A little hacky here, but we pull the argo workflow name from the pod name of the first child (since KFP is not giving the pod name in the API response).
+        wf_name = root_note.task.child_tasks[0].pod_name.rsplit("-", 1)[0]
+        return wf_name
+
+    @property
     def state(self) -> str:
         return self.run.state
 
@@ -116,6 +135,110 @@ class RunData(StateMixin):
         for node in self.nodes:
             print(f"  {node}")
 
+class ArgoPhasedMixin:
+    @property
+    def pending(self) -> bool:
+        return self.phase == 'Pending'
+
+    @property
+    def running(self) -> bool:
+        return self.phase == 'Running'
+
+    @property
+    def succeeded(self) -> bool:
+        return self.phase == 'Succeeded'
+
+    @property
+    def failed(self) -> bool:
+        return self.phase == 'Failed'
+
+    @property
+    def finished(self) -> bool:
+        return self.phase in ('Succeeded', 'Failed')
+
+class ArgoNodeData(ArgoPhasedMixin):
+    def __init__(
+        self,
+        name: str,
+        data: dict
+    ): 
+        self.name = name
+        self.data = data
+
+    @property
+    def display_name(self) -> str:
+        return self.data['displayName']
+
+    @property
+    def phase(self) -> str:
+        return self.data['phase']
+
+    @property
+    def started_at(self) -> datetime:
+        return parse_datetime(self.data['startedAt'])
+
+    @property
+    def finished_at(self) -> datetime:
+        return parse_datetime(self.data['finishedAt'])
+
+    def __str__(self) -> str:
+        return f"Node(name={self.name}, display_name={self.display_name}, phase={self.phase}, started_at={self.started_at}, finished_at={self.finished_at})"
+
+
+class ArgoRunData(ArgoPhasedMixin):
+    @classmethod
+    def from_workflow_name(cls, client: Client, workflow_name: str):
+        namespace = client.get_user_namespace()
+        if namespace == '':
+            namespace = "kubeflow"
+
+        result = subprocess.run(
+            f"kubectl get -o json wf {workflow_name} -n {namespace}".split(" "),
+            check=True,
+            capture_output=True
+        )
+
+        workflow_data = json.loads(result.stdout.decode())
+
+        return cls(workflow_data=workflow_data)
+
+    def __init__(self, workflow_data: dict):
+        self.workflow_data = workflow_data
+
+        self._parse_nodes()
+
+    def _parse_nodes(self):
+        self.nodes = []
+
+        for name, node in self.workflow_data['status']['nodes'].items():
+            self.nodes.append(ArgoNodeData(
+                name=name,
+                data=node
+            ))
+
+    @property
+    def phase(self) -> str:
+        return self.workflow_data['status']['phase']
+
+    @property
+    def started_at(self) -> datetime:
+        return parse_datetime(self.workflow_data['status']['startedAt'])
+
+    @property
+    def finished_at(self) -> datetime:
+        return parse_datetime(self.workflow_data['status']['finishedAt'])
+
+    def get_nodes(self, display_name: str) -> List[ArgoNodeData]:
+        return list(filter(lambda n: n.display_name == display_name, self.nodes))
+
+    def __str__(self) -> str:
+        return f"DAG(phase={self.phase}, started_at={self.started_at}, finished_at={self.finished_at})"
+
+    def display(self):
+        print(self)
+        for node in self.nodes:
+            print(f"  {node}")
+
 if __name__ == '__main__':
     from kfp.client import Client
     from v2.samples.pipelines.single_no_op import single_no_op
@@ -136,7 +259,9 @@ if __name__ == '__main__':
         time.sleep(0.1)
 
     print("---------------")
-    print(run_data.get_nodes('no-op')[0])
+    argo_data = ArgoRunData.from_workflow_name(client=client, workflow_name=run_data.argo_name)
+    argo_data.display()
+
 
     if False:
         print(dir(run))
