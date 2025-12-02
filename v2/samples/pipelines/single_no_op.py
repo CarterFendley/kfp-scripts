@@ -12,5 +12,6 @@ if __name__ == '__main__':
 
     client = Client()
     client.create_run_from_pipeline_func(
-        pipeline_func=single_no_op
+        pipeline_func=single_no_op,
+        enable_caching=False
     )

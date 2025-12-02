@@ -4,8 +4,9 @@ import json
 import subprocess
 import time
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 from kfp_server_api import V2beta1Run
+from kubernetes import config as k8s_config, client as k8s_client
 
 def parse_datetime(dt_str: str) -> datetime:
     assert dt_str.endswith("Z"), "Does not appear to be Zulu (UTC) timestamp"
@@ -88,8 +89,10 @@ class RunData(StateMixin):
         return list(filter(lambda n: n.display_name == display_name, self.nodes))
 
     @property
-    def argo_name(self) -> str:
+    def argo_name(self) -> Optional[str]:
         nodes = self.get_nodes("root")
+        if len(nodes) == 0:
+            return None
         if len(nodes) != 1:
             raise RuntimeError("Failed to get a single root node instead got: %s" % len(nodes))
 
@@ -192,13 +195,15 @@ class ArgoRunData(ArgoPhasedMixin):
         if namespace == '':
             namespace = "kubeflow"
 
-        result = subprocess.run(
-            f"kubectl get -o json wf {workflow_name} -n {namespace}".split(" "),
-            check=True,
-            capture_output=True
+        k8s_config.load_kube_config()
+        api = k8s_client.CustomObjectsApi()
+        workflow_data = api.get_namespaced_custom_object(
+            group="argoproj.io",
+            version="v1alpha1",
+            namespace = namespace,
+            plural="workflows",
+            name=workflow_name
         )
-
-        workflow_data = json.loads(result.stdout.decode())
 
         return cls(workflow_data=workflow_data)
 
@@ -245,12 +250,14 @@ if __name__ == '__main__':
 
     client = Client()
 
-    run = client.create_run_from_pipeline_func(single_no_op)
+    run = client.create_run_from_pipeline_func(single_no_op, enable_caching=False)
 
     while True:
         run = client.get_run(run.run_id)
         run_data = RunData(run)
 
+
+        print("Argo Name:", run_data.argo_name)
         run_data.display()
 
         if run_data.all_finished():
@@ -260,7 +267,9 @@ if __name__ == '__main__':
 
     print("---------------")
     argo_data = ArgoRunData.from_workflow_name(client=client, workflow_name=run_data.argo_name)
+
     argo_data.display()
+    print("no-op:", argo_data.get_nodes("no-op")[0])
 
 
     if False:
