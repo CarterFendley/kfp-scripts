@@ -195,7 +195,10 @@ class ArgoRunData(ArgoPhasedMixin):
         if namespace == '':
             namespace = "kubeflow"
 
-        k8s_config.load_kube_config()
+        try:
+            k8s_config.load_kube_config()
+        except k8s_config.ConfigException:
+            k8s_config.load_incluster_config()
         api = k8s_client.CustomObjectsApi()
         workflow_data = api.get_namespaced_custom_object(
             group="argoproj.io",
